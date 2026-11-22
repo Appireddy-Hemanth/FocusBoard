@@ -1829,6 +1829,39 @@ button[aria-disabled="true"] {
   font-size: 12px;
 }
 
+.habit-weekday-selector {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.habit-weekday-selector legend {
+  padding-inline: 4px;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.habit-weekday-selector label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.habit-weekday-selector input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
 .habit-form-actions {
   display: flex;
   justify-content: flex-end;
@@ -1875,7 +1908,7 @@ button[aria-disabled="true"] {
 
 .habit-progress-row {
   display: grid;
-  grid-template-columns: 42px 40px 42px 40px;
+  grid-template-columns: minmax(48px, 1fr) 40px minmax(48px, 1fr) 40px;
   align-items: center;
   gap: 4px;
   margin-top: 8px;

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useTaskContext } from '../context/useTaskContext'
-import { calculateStreak, countRecentDays } from '../utils/habitUtils'
+import { calculateStreak, getHabitProgress } from '../utils/habitUtils'
 
 const STORAGE_KEY = 'focusboard_habits_v1'
 
@@ -14,13 +14,25 @@ function loadHabits() {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
     return Array.isArray(parsed)
       ? parsed.map(habit => ({
-          description: '',
-          category: 'Personal',
-          frequency: 'Daily',
-          preferredTime: 'Morning',
-          startDate: habit.startDate || toLocalDateKey(),
-          completedDates: Array.isArray(habit.completedDates) ? habit.completedDates : [],
           ...habit,
+          description: habit.description || '',
+          category: habit.category || 'Personal',
+          frequency: habit.frequency === 'Three times weekly'
+            ? 'Custom'
+            : ['Daily', 'Weekdays', 'Weekly', 'Custom'].includes(habit.frequency)
+              ? habit.frequency
+              : 'Daily',
+          targetPerWeek: habit.frequency === 'Three times weekly'
+            ? 3
+            : Math.min(7, Math.max(1, Number(habit.targetPerWeek) || 3)),
+          preferredTime: habit.preferredTime || 'Morning',
+          startDate: habit.startDate || toLocalDateKey(),
+          completedDates: Array.isArray(habit.completedDates)
+            ? [...new Set(habit.completedDates.filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)))]
+            : [],
+          selectedWeekdays: Array.isArray(habit.selectedWeekdays)
+            ? [...new Set(habit.selectedWeekdays.filter(day => Number.isInteger(day) && day >= 0 && day <= 6))]
+            : [],
         }))
       : []
   } catch {
@@ -34,6 +46,8 @@ const EMPTY_HABIT = {
   description: '',
   category: 'Personal',
   frequency: 'Daily',
+  selectedWeekdays: [],
+  targetPerWeek: 3,
   preferredTime: 'Morning',
   startDate: toLocalDateKey(),
 }
@@ -65,13 +79,22 @@ export default function HabitTrackerView() {
     setError('')
     if (editingId) {
       saveHabits(habits.map(habit => habit.id === editingId
-        ? { ...habit, ...form, name, description: form.description.trim() }
+        ? {
+            ...habit,
+            ...form,
+            name,
+            description: form.description.trim(),
+            selectedWeekdays: form.frequency === 'Weekly' ? form.selectedWeekdays : [],
+            targetPerWeek: Math.min(7, Math.max(1, Number(form.targetPerWeek) || 3)),
+          }
         : habit))
     } else {
       saveHabits([...habits, {
         ...form,
         name,
         description: form.description.trim(),
+        selectedWeekdays: form.frequency === 'Weekly' ? form.selectedWeekdays : [],
+        targetPerWeek: Math.min(7, Math.max(1, Number(form.targetPerWeek) || 3)),
         id: globalThis.crypto?.randomUUID?.() || `habit-${Date.now()}`,
         completedDates: [],
       }])
@@ -89,7 +112,7 @@ export default function HabitTrackerView() {
       }
       gamification.awardHabitCompletion(id, today)
       const nextDates = [...completedDates, today]
-      if (calculateStreak(nextDates).longest >= 7) {
+      if (calculateStreak(nextDates, habit, today).longest >= 7) {
         gamification.unlockAchievement('seven-day-habit-streak')
       }
       return { ...habit, completedDates: nextDates }
@@ -103,6 +126,8 @@ export default function HabitTrackerView() {
       description: habit.description || '',
       category: habit.category || 'Personal',
       frequency: habit.frequency || 'Daily',
+      selectedWeekdays: Array.isArray(habit.selectedWeekdays) ? habit.selectedWeekdays : [],
+      targetPerWeek: habit.targetPerWeek || 3,
       preferredTime: habit.preferredTime || 'Morning',
       startDate: habit.startDate || today,
     })
@@ -116,8 +141,11 @@ export default function HabitTrackerView() {
   const removeHabit = id => saveHabits(habits.filter(habit => habit.id !== id))
 
   const longestAcrossHabits = useMemo(
-    () => habits.reduce((max, habit) => Math.max(max, calculateStreak(habit.completedDates).longest), 0),
-    [habits],
+    () => habits.reduce(
+      (max, habit) => Math.max(max, calculateStreak(habit.completedDates, habit, today).longest),
+      0,
+    ),
+    [habits, today],
   )
 
   return (
@@ -149,10 +177,35 @@ export default function HabitTrackerView() {
               </select>
             </label>
             <label>Target frequency
-              <select value={form.frequency} onChange={event => setForm(current => ({ ...current, frequency: event.target.value }))}>
-                <option>Daily</option><option>Weekdays</option><option>Three times weekly</option><option>Weekly</option>
+              <select value={form.frequency} onChange={event => setForm(current => {
+                const frequency = event.target.value
+                const startDate = new Date(`${current.startDate}T00:00:00`)
+                return {
+                  ...current,
+                  frequency,
+                  selectedWeekdays: frequency === 'Weekly' && current.selectedWeekdays.length === 0
+                    ? [startDate.getDay()]
+                    : current.selectedWeekdays,
+                }
+              })}>
+                <option>Daily</option><option>Weekdays</option><option>Weekly</option><option>Custom</option>
               </select>
             </label>
+            {form.frequency === 'Custom' && (
+              <label htmlFor="habit-target-per-week">Completions per week
+                <input
+                  id="habit-target-per-week"
+                  type="number"
+                  min="1"
+                  max="7"
+                  value={form.targetPerWeek}
+                  onChange={event => setForm(current => ({
+                    ...current,
+                    targetPerWeek: Math.min(7, Math.max(1, Number(event.target.value) || 1)),
+                  }))}
+                />
+              </label>
+            )}
             <label>Preferred time
               <select value={form.preferredTime} onChange={event => setForm(current => ({ ...current, preferredTime: event.target.value }))}>
                 <option>Morning</option><option>Afternoon</option><option>Evening</option><option>Any time</option>
@@ -161,6 +214,34 @@ export default function HabitTrackerView() {
             <label>Start date
               <input type="date" value={form.startDate} onChange={event => setForm(current => ({ ...current, startDate: event.target.value }))} />
             </label>
+            {form.frequency === 'Weekly' && (
+              <fieldset className="habit-weekday-selector">
+                <legend>Repeat on</legend>
+                {[
+                  ['Sun', 0],
+                  ['Mon', 1],
+                  ['Tue', 2],
+                  ['Wed', 3],
+                  ['Thu', 4],
+                  ['Fri', 5],
+                  ['Sat', 6],
+                ].map(([label, day]) => (
+                  <label key={day}>
+                    <input
+                      type="checkbox"
+                      checked={form.selectedWeekdays.includes(day)}
+                      onChange={event => setForm(current => ({
+                        ...current,
+                        selectedWeekdays: event.target.checked
+                          ? [...new Set([...current.selectedWeekdays, day])]
+                          : current.selectedWeekdays.filter(selected => selected !== day),
+                      }))}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </fieldset>
+            )}
           </div>
           <div className="habit-form-actions">
             {editingId && <button type="button" className="cancel-button" onClick={cancelEdit}>Cancel</button>}
@@ -172,11 +253,8 @@ export default function HabitTrackerView() {
           {habits.map(habit => {
             const completedDates = habit.completedDates || []
             const completed = completedDates.includes(today)
-            const streak = calculateStreak(completedDates)
-            const weekCount = countRecentDays(completedDates, 7)
-            const monthCount = countRecentDays(completedDates, 30)
-            const weekPercentage = Math.round(weekCount / 7 * 100)
-            const monthPercentage = Math.round(monthCount / 30 * 100)
+            const streak = calculateStreak(completedDates, habit, today)
+            const progress = getHabitProgress(completedDates, habit, today)
             return (
               <article className={`habit-card ${completed ? 'completed' : ''}`} key={habit.id}>
                 <button type="button" className="habit-toggle" onClick={() => toggleHabit(habit.id)} aria-pressed={completed} aria-label={`${completed ? 'Undo' : 'Complete'} ${habit.name}`}>
@@ -185,13 +263,20 @@ export default function HabitTrackerView() {
                 <div className="habit-card-main">
                   <h2>{habit.name}</h2>
                   {habit.description && <p>{habit.description}</p>}
-                  <small>{habit.category} · {habit.frequency} · {habit.preferredTime}</small>
+                  <small>
+                    {habit.category} · {habit.frequency}
+                    {habit.frequency === 'Custom' && ` · ${habit.targetPerWeek || 3}×/week`}
+                    {habit.frequency === 'Weekly' && habit.selectedWeekdays?.length > 0
+                      && ` · ${habit.selectedWeekdays.length} day${habit.selectedWeekdays.length === 1 ? '' : 's'}/week`}
+                    {' · '}{habit.preferredTime}
+                  </small>
                   <div className="habit-progress-row">
-                    <span>7 days</span><strong>{weekCount}/7</strong><span>30 days</span><strong>{monthCount}/30</strong>
+                    <span>This week</span><strong>{progress.weekCount}/{progress.weekTarget}</strong>
+                    <span>30 days</span><strong>{progress.monthCount}/{progress.monthTarget}</strong>
                   </div>
                   <div className="habit-progress-bars">
-                    <div><span style={{ width: `${weekPercentage}%` }} /></div>
-                    <div><span style={{ width: `${monthPercentage}%` }} /></div>
+                    <div><span style={{ width: `${progress.weekPercentage}%` }} /></div>
+                    <div><span style={{ width: `${progress.monthPercentage}%` }} /></div>
                   </div>
                   <div className="habit-history" aria-label={`Recent completion history for ${habit.name}`}>
                     {Array.from({ length: 14 }, (_, index) => {

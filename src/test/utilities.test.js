@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { calculateNextOccurrence } from '../utils/recurrence'
-import { calculateStreak, countRecentDays } from '../utils/habitUtils'
+import {
+  calculateStreak,
+  countRecentDays,
+  getHabitProgress,
+  getHabitTargetPerWeek,
+  isHabitDue,
+} from '../utils/habitUtils'
 import { getLevelProgress } from '../utils/gamification'
 import { useGamification } from '../hooks/useGamification'
 
@@ -17,14 +23,54 @@ describe('recurrence utility', () => {
 
 describe('habit calculations', () => {
   it('calculates current and longest streaks', () => {
-    const result = calculateStreak(['2026-11-20', '2026-11-21', '2026-11-22'])
+    const result = calculateStreak(['2026-11-20', '2026-11-21', '2026-11-22'], {}, '2026-11-22')
     expect(result.current).toBe(3)
     expect(result.longest).toBe(3)
   })
 
+  it('keeps weekday streaks across weekends but breaks after a missed scheduled day', () => {
+    const habit = { frequency: 'Weekdays', startDate: '2026-11-16' }
+    expect(calculateStreak(
+      ['2026-11-19', '2026-11-20', '2026-11-23'],
+      habit,
+      '2026-11-23',
+    )).toEqual({ current: 3, longest: 3 })
+    expect(calculateStreak(
+      ['2026-11-19', '2026-11-20'],
+      habit,
+      '2026-11-24',
+    ).current).toBe(0)
+  })
+
+  it('tracks weekly and custom frequency targets and progress', () => {
+    const weekly = { frequency: 'Weekly', selectedWeekdays: [1, 3], startDate: '2026-11-02' }
+    expect(getHabitTargetPerWeek(weekly)).toBe(2)
+    expect(isHabitDue(weekly, '2026-11-23')).toBe(true)
+    expect(isHabitDue(weekly, '2026-11-24')).toBe(false)
+    expect(calculateStreak(
+      ['2026-11-09', '2026-11-11', '2026-11-16', '2026-11-18', '2026-11-23', '2026-11-25'],
+      weekly,
+      '2026-11-25',
+    )).toEqual({ current: 3, longest: 3 })
+
+    const custom = { frequency: 'Custom', targetPerWeek: 3 }
+    expect(getHabitTargetPerWeek(custom)).toBe(3)
+    expect(getHabitProgress(
+      ['2026-11-18', '2026-11-20', '2026-11-22'],
+      custom,
+      '2026-11-22',
+    )).toMatchObject({
+      weekCount: 3,
+      weekTarget: 3,
+      weekPercentage: 100,
+      monthCount: 3,
+      monthTarget: 13,
+    })
+  })
+
   it('counts completion dates within a range', () => {
     const localToday = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
-    expect(countRecentDays([localToday], 7)).toBe(1)
+    expect(countRecentDays([localToday, localToday], 7, localToday)).toBe(1)
   })
 })
 
