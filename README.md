@@ -3,7 +3,9 @@
 FocusBoard is a responsive, single-user task management dashboard built for fast task planning and daily focus tracking. It supports task creation and editing, status changes, filtering, focus notes, and local browser persistence.
 
 ## Live Demo
-Live deployment is not yet available. A hosted URL should be added here only after a successful production deployment.
+No public hosted demo is claimed yet. The source and screenshots are available at:
+
+- https://github.com/Appireddy-Hemanth/FocusBoard
 
 ## Screenshots
 
@@ -95,7 +97,7 @@ git init
 git add .
 git commit -m "feat: complete FocusBoard application"
 git branch -M main
-git remote add origin <YOUR_GITHUB_REPOSITORY_URL>
+git remote add origin https://github.com/Appireddy-Hemanth/FocusBoard.git
 git push -u origin main
 ```
 
