@@ -88,6 +88,41 @@ describe('Routing', () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
   })
+
+  it('builds the weekly review from recorded tasks, focus sessions, and habit history', async () => {
+    const today = new Date()
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    window.localStorage.setItem('focusboard_tasks', JSON.stringify([{
+      id: 'weekly-task',
+      title: 'Weekly task',
+      description: '',
+      category: 'Product',
+      status: 'Completed',
+      priority: 'Medium',
+      dueDate: todayKey,
+      updatedAt: todayKey,
+    }]))
+    window.localStorage.setItem('focusboard_focus_sessions_v1', JSON.stringify([{
+      id: 'weekly-focus',
+      completedAt: new Date().toISOString(),
+      minutes: 25,
+      type: 'deep-work',
+    }]))
+    window.localStorage.setItem('focusboard_habits_v1', JSON.stringify([{
+      id: 'weekly-habit',
+      frequency: 'Custom',
+      targetPerWeek: 3,
+      completedDates: [todayKey],
+    }]))
+    window.history.pushState({}, '', '/weekly-review')
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Weekly Productivity Review' })).toBeInTheDocument()
+    expect(within(screen.getByText('Completed tasks').closest('article')).getByText('1')).toBeInTheDocument()
+    expect(within(screen.getByText('Focus sessions').closest('article')).getByText('1')).toBeInTheDocument()
+    expect(within(screen.getByText('Focus time').closest('article')).getByText('25 min')).toBeInTheDocument()
+    expect(within(screen.getByText('Habit check-ins').closest('article')).getByText('1 / 3')).toBeInTheDocument()
+  })
 })
 
 describe('LocalStorage and dashboard', () => {

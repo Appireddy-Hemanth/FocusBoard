@@ -3113,6 +3113,24 @@ button[aria-disabled="true"] {
   text-align: left;
 }
 
+.weekly-trend-list {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weekly-trend-list li {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  border-top: 1px solid #E2E8F0;
+  padding-top: 8px;
+  color: #64748B;
+  font-size: 12px;
+}
+
 .workload-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

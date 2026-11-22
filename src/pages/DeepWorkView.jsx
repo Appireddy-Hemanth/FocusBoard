@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTaskContext } from '../context/useTaskContext'
+import { createFocusSessionId, recordFocusSession } from '../utils/focusSessions'
 
 export default function DeepWorkView({ onExit }) {
   const { tasks, updateStatus, gamification, addActivity } = useTaskContext()
@@ -8,6 +9,7 @@ export default function DeepWorkView({ onExit }) {
   const [seconds, setSeconds] = useState(() => Number(localStorage.getItem('focusboard_deep_remaining') || 25 * 60))
   const [running, setRunning] = useState(false)
   const intervalRef = useRef(null)
+  const sessionIdRef = useRef(null)
 
   const selected = tasks.find(task => task.id === selectedId)
 
@@ -24,16 +26,37 @@ export default function DeepWorkView({ onExit }) {
     intervalRef.current = window.setTimeout(() => {
       if (seconds <= 1) {
         setRunning(false)
-        gamification.awardFocusSession()
-        gamification.unlockAchievement('first-focus-session')
-        addActivity('Completed a Deep Work session')
+        let recorded = false
+        try {
+          recorded = recordFocusSession({
+            id: sessionIdRef.current || createFocusSessionId(),
+            completedAt: new Date().toISOString(),
+            minutes: 25,
+            type: 'deep-work',
+            taskId: selectedId || '',
+          })
+        } catch (error) {
+          console.error('Unable to save the completed deep work session.', error)
+        }
+        if (recorded) {
+          gamification.awardFocusSession()
+          gamification.unlockAchievement('first-focus-session')
+          addActivity('Completed a Deep Work session')
+          try {
+            const sessions = Number(localStorage.getItem('focusboard_focus_sessions') || 0) + 1
+            localStorage.setItem('focusboard_focus_sessions', String(sessions))
+          } catch (error) {
+            console.error('Unable to update the focus session count.', error)
+          }
+        }
+        sessionIdRef.current = null
         setSeconds(25 * 60)
       } else {
         setSeconds(current => current - 1)
       }
     }, 1000)
     return () => window.clearTimeout(intervalRef.current)
-  }, [running, seconds, gamification, addActivity])
+  }, [running, seconds, gamification, addActivity, selectedId])
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -46,6 +69,17 @@ export default function DeepWorkView({ onExit }) {
   const completeTask = () => {
     if (!selected) return
     updateStatus(selected.id, 'Completed')
+  }
+
+  const toggleTimer = () => {
+    if (!running && !sessionIdRef.current) sessionIdRef.current = createFocusSessionId()
+    setRunning(current => !current)
+  }
+
+  const resetTimer = () => {
+    setRunning(false)
+    sessionIdRef.current = null
+    setSeconds(25 * 60)
   }
 
   const minutes = String(Math.floor(seconds / 60)).padStart(2, '0')
@@ -72,8 +106,8 @@ export default function DeepWorkView({ onExit }) {
           {selected && <span>{selected.title}</span>}
         </div>
         <div className="timer-actions">
-          <button type="button" className="timer-main" onClick={() => setRunning(current => !current)}>{running ? 'Pause' : 'Start'}</button>
-          <button type="button" className="secondary-button" onClick={() => setSeconds(25 * 60)}>Reset</button>
+          <button type="button" className="timer-main" onClick={toggleTimer}>{running ? 'Pause' : 'Start'}</button>
+          <button type="button" className="secondary-button" onClick={resetTimer}>Reset</button>
           <button type="button" className="create-button" onClick={completeTask} disabled={!selected}>Complete task</button>
         </div>
         <label className="distraction-note">Distraction note

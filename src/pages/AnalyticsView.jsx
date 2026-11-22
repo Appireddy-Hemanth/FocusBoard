@@ -1,5 +1,6 @@
 import { useTaskContext } from '../context/useTaskContext'
 import { useState } from 'react'
+import { readFocusSessions } from '../utils/focusSessions'
 
 export default function AnalyticsView() {
   const {
@@ -16,9 +17,7 @@ export default function AnalyticsView() {
 
   const [periodAnchor] = useState(() => new Date())
   const periodStart = new Date(periodAnchor)
-  if (period === '7') periodStart.setDate(periodStart.getDate() - 7)
-  if (period === '30') periodStart.setDate(periodStart.getDate() - 30)
-  if (period === '90') periodStart.setDate(periodStart.getDate() - 90)
+  if (period !== 'all') periodStart.setDate(periodStart.getDate() - (Number(period) - 1))
   const periodKey = period === 'all' ? '' : `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}-${String(periodStart.getDate()).padStart(2, '0')}`
   const periodTasks = period === 'all'
     ? tasks
@@ -36,30 +35,11 @@ export default function AnalyticsView() {
     ? Math.round((1 - Math.abs(periodEstimatedMinutes - periodActualMinutes) / periodEstimatedMinutes) * 100)
     : 0
 
-  const focusSessions = (() => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem('focusboard_focus_sessions_v1') || '[]')
-      if (!Array.isArray(parsed)) return 0
-      return period === 'all'
-        ? parsed.length
-        : parsed.filter(record => (record.completedAt || '').slice(0, 10) >= periodKey).length
-    } catch {
-      return 0
-    }
-  })()
-
-  const focusMinutes = (() => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem('focusboard_focus_sessions_v1') || '[]')
-      if (!Array.isArray(parsed)) return 0
-      const filtered = period === 'all'
-        ? parsed
-        : parsed.filter(record => (record.completedAt || '').slice(0, 10) >= periodKey)
-      return filtered.reduce((sum, record) => sum + (Number(record.minutes) || 0), 0)
-    } catch {
-      return 0
-    }
-  })()
+  const periodFocusSessions = readFocusSessions().filter(record =>
+    period === 'all' || record.completedAt.slice(0, 10) >= periodKey,
+  )
+  const focusSessions = periodFocusSessions.length
+  const focusMinutes = periodFocusSessions.reduce((sum, record) => sum + record.minutes, 0)
 
   const heatmap = Array.from({ length: 35 }, (_, index) => {
     const date = new Date()

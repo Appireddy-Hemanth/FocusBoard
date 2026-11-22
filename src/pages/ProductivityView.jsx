@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pause, Play, RotateCcw } from 'lucide-react'
 import { useTaskContext } from '../context/useTaskContext'
+import { createFocusSessionId, readFocusSessions, recordFocusSession } from '../utils/focusSessions'
 
 export default function ProductivityView() {
   const { tasks, activity, addActivity, gamification } = useTaskContext()
@@ -10,6 +11,7 @@ export default function ProductivityView() {
   const [seconds, setSeconds] = useState(() => Number(localStorage.getItem('focusboard_pomodoro_remaining') || workMinutes * 60))
   const [running, setRunning] = useState(false)
   const intervalRef = useRef(null)
+  const sessionIdRef = useRef(null)
 
   useEffect(() => {
     localStorage.setItem('focusboard_pomodoro_work', String(workMinutes))
@@ -41,23 +43,29 @@ export default function ProductivityView() {
       if (seconds <= 1) {
         setRunning(false)
         if (mode === 'work') {
-          addActivity('Completed a Pomodoro focus session')
-          gamification.awardFocusSession()
-          gamification.unlockAchievement('first-focus-session')
-          const sessions = Number(localStorage.getItem('focusboard_focus_sessions') || 0) + 1
-          localStorage.setItem('focusboard_focus_sessions', String(sessions))
+          let recorded = false
           try {
-            const records = JSON.parse(localStorage.getItem('focusboard_focus_sessions_v1') || '[]')
-            const next = Array.isArray(records) ? records : []
-            localStorage.setItem('focusboard_focus_sessions_v1', JSON.stringify([
-              ...next,
-              { id: `session-${Date.now()}`, completedAt: new Date().toISOString(), minutes: workMinutes },
-            ].slice(-500)))
-          } catch {
-            localStorage.setItem('focusboard_focus_sessions_v1', JSON.stringify([
-              { id: `session-${Date.now()}`, completedAt: new Date().toISOString(), minutes: workMinutes },
-            ]))
+            recorded = recordFocusSession({
+              id: sessionIdRef.current || createFocusSessionId(),
+              completedAt: new Date().toISOString(),
+              minutes: workMinutes,
+              type: 'pomodoro',
+            })
+          } catch (error) {
+            console.error('Unable to save the completed focus session.', error)
           }
+          if (recorded) {
+            addActivity('Completed a Pomodoro focus session')
+            gamification.awardFocusSession()
+            gamification.unlockAchievement('first-focus-session')
+            try {
+              const sessions = Number(localStorage.getItem('focusboard_focus_sessions') || 0) + 1
+              localStorage.setItem('focusboard_focus_sessions', String(sessions))
+            } catch (error) {
+              console.error('Unable to update the focus session count.', error)
+            }
+          }
+          sessionIdRef.current = null
           setMode('break')
           setSeconds(breakMinutes * 60)
         } else {
@@ -73,14 +81,23 @@ export default function ProductivityView() {
 
   const resetTimer = () => {
     setRunning(false)
+    sessionIdRef.current = null
     setMode('work')
     setSeconds(workMinutes * 60)
   }
 
   const switchMode = nextMode => {
     setRunning(false)
+    sessionIdRef.current = null
     setMode(nextMode)
     setSeconds((nextMode === 'work' ? workMinutes : breakMinutes) * 60)
+  }
+
+  const toggleTimer = () => {
+    if (!running && mode === 'work' && !sessionIdRef.current) {
+      sessionIdRef.current = createFocusSessionId()
+    }
+    setRunning(current => !current)
   }
 
   const minutes = String(Math.floor(seconds / 60)).padStart(2, '0')
@@ -89,7 +106,10 @@ export default function ProductivityView() {
   const completedToday = tasks.filter(task =>
     task.status === 'Completed' && (task.updatedAt || '').slice(0, 10) === today,
   ).length
-  const totalSessions = Number(localStorage.getItem('focusboard_focus_sessions') || 0)
+  const totalSessions = Math.max(
+    Number(localStorage.getItem('focusboard_focus_sessions') || 0),
+    readFocusSessions().length,
+  )
 
   return (
     <main className="main view-main" id="focus">
@@ -107,7 +127,7 @@ export default function ProductivityView() {
             <span>{mode === 'work' ? 'Focus session' : 'Short break'}</span>
           </div>
           <div className="timer-actions">
-            <button type="button" className="timer-main" onClick={() => setRunning(current => !current)}>
+            <button type="button" className="timer-main" onClick={toggleTimer}>
               {running ? <Pause size={18} /> : <Play size={18} />}
               {running ? 'Pause' : 'Start'}
             </button>

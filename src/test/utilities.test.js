@@ -10,6 +10,7 @@ import {
 } from '../utils/habitUtils'
 import { getLevelProgress } from '../utils/gamification'
 import { useGamification } from '../hooks/useGamification'
+import { readFocusSessions, recordFocusSession } from '../utils/focusSessions'
 
 beforeEach(() => window.localStorage.clear())
 
@@ -94,5 +95,28 @@ describe('gamification reward de-duplication', () => {
 
     act(() => rerender({ tasks: [{ ...completed[0] }] }))
     expect(result.current.xp).toBe(25)
+  })
+})
+
+describe('focus session records', () => {
+  it('stores a completed session once by its stable ID', () => {
+    const session = {
+      id: 'focus-session-1',
+      completedAt: '2026-11-22T12:00:00.000Z',
+      minutes: 25,
+      type: 'deep-work',
+    }
+
+    expect(recordFocusSession(session)).toBe(true)
+    expect(recordFocusSession(session)).toBe(false)
+    expect(readFocusSessions()).toEqual([session])
+  })
+
+  it('rejects invalid session durations', () => {
+    expect(() => recordFocusSession({
+      id: 'invalid-session',
+      completedAt: '2026-11-22T12:00:00.000Z',
+      minutes: -1,
+    })).toThrow('non-negative duration')
   })
 })
